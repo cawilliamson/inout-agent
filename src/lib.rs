@@ -45,9 +45,6 @@ impl Agent {
         }
     }
 
-    /// placeholder agent used while the real agent is borrowed by a background task.
-    /// history/tools are empty; only used to satisfy borrow checker during swaps.
-    #[allow(clippy::await_holding_lock)]
     pub async fn run_turn(&mut self, user_msg: String) -> Result<String> {
         self.state = State::Thinking;
         self.history.append_user(user_msg);
