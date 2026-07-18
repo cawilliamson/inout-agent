@@ -1,3 +1,4 @@
+pub mod tui;
 // twobobs: minimal rust-native ai agent
 // v1 scope: conversation loop, 5 tools, single agent, jsonl history, vcr tests.
 // not v1: streaming, subagents, hub, mcp, browser, debug, lsp, ast, skills,
@@ -70,19 +71,73 @@ impl Agent {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut agent = Agent::new(
-        Config {
-            repo_root: PathBuf::from("."),
-            llm_provider: "replay".to_string(),
-            model: "replay".to_string(),
-            max_turns: 20,
-            bash: BashConfig::default(),
-        },
-        Box::new(llm::ReplayLlmClient::new(vec![
-            LlmResponse { content: "done".to_string(), tool_calls: vec![] }
-        ])),
-    );
-    let reply = agent.run_turn("hello".to_string()).await?;
-    println!("{}", reply);
+    let model = std::env::var("TWOBOBS_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
+    let repo_root = std::env::var("TWOBOBS_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
+    let config = Config {
+        repo_root: PathBuf::from(repo_root).canonicalize()?,
+        llm_provider: "llmgateway".to_string(),
+        model,
+        max_turns: 20,
+        bash: BashConfig::default(),
+    };
+    let llm: Box<dyn LlmClient> = Box::new(llm::HttpLlmClient::from_env().await?);
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--tui") {
+        tui::run(config, llm).await?;
+        return Ok(());
+    }
+
+    let mut agent = Agent::new(config, llm);
+    let prompt = args.get(1).cloned().unwrap_or_else(|| "say hello world".to_string());
+    let streaming = std::env::var("TWOBOBS_STREAM").map(|v| v == "1").unwrap_or(false);
+    if streaming {
+        run_stream(&mut agent, prompt).await?;
+    } else {
+        let reply = agent.run_turn(prompt).await?;
+        println!("{reply}");
+    }
     Ok(())
+}
+
+async fn run_stream(agent: &mut Agent, prompt: String) -> Result<()> {
+    use std::io::Write as _;
+    agent.history.append_user(prompt);
+    loop {
+        let req = agent.history.to_request(&agent.config.model, &agent.tools.schemas());
+        let mut rx = agent.llm.complete_stream(req).await?;
+        let mut content = String::new();
+        let mut tool_calls: Vec<crate::tools::ToolCall> = Vec::new();
+        while let Some(evt) = rx.recv().await {
+            match evt {
+                crate::llm::StreamEvent::Content(delta) => {
+                    content.push_str(&delta);
+                    print!("{delta}");
+                    std::io::stdout().flush()?;
+                }
+                crate::llm::StreamEvent::ToolCallStart(tc) => {
+                    tool_calls.push(tc);
+                }
+                crate::llm::StreamEvent::ToolCallDelta(_) => {}
+                crate::llm::StreamEvent::Cost(c) => {
+                    eprintln!("[cost] {} model={}", c.format(), agent.config.model);
+                }
+                crate::llm::StreamEvent::Done => break,
+                crate::llm::StreamEvent::Error(e) => {
+                    return Err(anyhow::anyhow!("stream error: {e}"));
+                }
+            }
+        }
+        println!();
+        if tool_calls.is_empty() {
+            agent.history.append_assistant(content);
+            return Ok(());
+        }
+        agent.history.append_assistant_with_tools(content, tool_calls.clone());
+        for call in &tool_calls {
+            let result = agent.tools.dispatch(call).await;
+            eprintln!("[result] {} -> {}", call.name, result.chars().take(100).collect::<String>());
+            agent.history.append_tool_result(call.id.clone(), result);
+        }
+    }
 }

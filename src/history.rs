@@ -15,6 +15,7 @@ pub struct Message {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
+    System,
     User,
     Assistant,
     Tool,
@@ -24,11 +25,21 @@ pub enum Role {
 pub struct History {
     pub messages: Vec<Message>,
     pub max_turns: usize,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 impl History {
     pub fn new(max_turns: usize) -> Self {
-        Self { messages: Vec::new(), max_turns }
+        Self { messages: Vec::new(), max_turns, system_prompt: None }
+    }
+
+    pub fn with_system_prompt(max_turns: usize, system_prompt: String) -> Self {
+        Self { messages: Vec::new(), max_turns, system_prompt: Some(system_prompt) }
+    }
+
+    pub fn set_system_prompt(&mut self, prompt: String) {
+        self.system_prompt = Some(prompt);
     }
 
     pub fn append_user(&mut self, content: String) {
@@ -48,9 +59,21 @@ impl History {
     }
 
     pub fn to_request(&self, model: &str, tool_schemas: &[serde_json::Value]) -> LlmRequest {
+        let mut messages: Vec<Message> = Vec::new();
+        if let Some(prompt) = &self.system_prompt {
+            if !prompt.is_empty() {
+                messages.push(Message {
+                    role: Role::System,
+                    content: prompt.clone(),
+                    tool_calls: Vec::new(),
+                    tool_call_id: None,
+                });
+            }
+        }
+        messages.extend(self.messages.iter().cloned());
         LlmRequest {
             model: model.to_string(),
-            messages: self.messages.clone(),
+            messages,
             tools: tool_schemas.to_vec(),
         }
     }
@@ -65,7 +88,7 @@ impl History {
             if line.is_empty() { continue; }
             messages.push(serde_json::from_str(line)?);
         }
-        Ok(Self { messages, max_turns: 20 })
+        Ok(Self { messages, max_turns: 20, system_prompt: None })
     }
 }
 
