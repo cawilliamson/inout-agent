@@ -1,0 +1,40 @@
+[package]
+name = "inout"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "inout agent binary: core loop, tui, llm providers"
+
+[[bin]]
+name = "io"
+path = "src/main.rs"
+
+[lib]
+name = "inout"
+path = "src/lib.rs"
+
+
+[features]
+default = []
+[dependencies]
+inout-core = { path = "../inout-core" }
+inout-ext-sessions = { path = "../inout-ext-sessions" }
+inout-ext-skills = { path = "../inout-ext-skills" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
+async-trait = "0.1"
+sha2 = "0.10"
+anyhow = "1"
+thiserror = "1"
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+futures = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

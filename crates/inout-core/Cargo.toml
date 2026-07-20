@@ -1,0 +1,27 @@
+[package]
+name = "inout-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "inout agent core substrate: loop, types, registries, hook bus, extension loader"
+
+[lib]
+name = "inout_core"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1", features = ["rt", "macros", "sync", "fs", "process", "time"] }
+rhai = { version = "1", features = ["sync"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,27 @@
+[package]
+name = "inout-ext-sessions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "inout sessions extension: durable session trees, branching, compaction and continuity handoff"
+
+[lib]
+name = "inout_ext_sessions"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+inout-core = { path = "../inout-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["fs", "io-util", "rt", "rt-multi-thread", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

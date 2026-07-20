@@ -1,0 +1,7 @@
+[build]
+# do not globally -D warnings: missing_docs/pedantic/nursery are warn-level by
+# design. clippy is the gate (`cargo clippy -- -D warnings`), not cargo build.
+
+[alias]
+lint = "clippy --all-targets -- -D warnings"
+audit = "deny check"

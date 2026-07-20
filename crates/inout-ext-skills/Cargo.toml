@@ -1,0 +1,25 @@
+[package]
+name = "inout-ext-skills"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "inout skills extension: markdown skill files with yaml frontmatter and trigger injection"
+
+[lib]
+name = "inout_ext_skills"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+inout-core = { path = "../inout-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
