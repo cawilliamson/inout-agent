@@ -8,6 +8,7 @@ use inout_core::extension::{Extension, ExtensionApi};
 use inout_core::jail::Jail;
 use inout_core::scripting::{ScriptExtension, ScriptPermissions};
 use inout_core::tools::ToolCall;
+use inout_testing::{scenario, then, when};
 use serde_json::{json, Value};
 
 fn extensions_dir() -> PathBuf {
@@ -27,8 +28,15 @@ fn tmp_repo() -> (tempfile::TempDir, Config) {
     (dir, config)
 }
 
+fn load_with_perms(name: &str, perms: ScriptPermissions, config: &Config) -> ScriptExtension {
+    let jail = Jail::new(config.repo_root.clone());
+    let path = extensions_dir().join(format!("{name}.rhai"));
+    ScriptExtension::from_file(&path, jail, config.clone(), perms).expect("script loads")
+}
+
 #[tokio::test]
 async fn read_tool_reads_file_slice() {
+    let mut s = scenario!("scripting", "Tool handler signature", "Tool handler returns string");
     let (_tmp, config) = tmp_repo();
     std::fs::write(config.repo_root.join("sample.txt"), "line1\nline2\nline3\n").unwrap();
     let jail = Jail::new(config.repo_root.clone());
@@ -46,23 +54,33 @@ async fn read_tool_reads_file_slice() {
         name: "read".into(),
         arguments: json!({ "path": "sample.txt", "offset": 2, "limit": 1 }),
     };
-    let result = api.tools.dispatch_call(&call).await.expect("read ok");
-    assert_eq!(result, "line2");
+    when!(s, "the read tool is dispatched with an offset and limit", {
+        let result = api.tools.dispatch_call(&call).await.expect("read ok");
+        then!(s, "the returned slice matches the requested line range", {
+            assert_eq!(result, "line2");
+        });
+    });
 }
 
 #[tokio::test]
 async fn read_tool_missing_path_errors() {
+    let mut s = scenario!("scripting", "Tool handler signature", "Tool handler throws exception");
     let (_tmp, _config) = tmp_repo();
     let ext = load_script("read", ScriptPermissions::default());
     let mut api = ExtensionApi::noop();
     ext.register(&mut api);
     let call = ToolCall { id: "t1".into(), name: "read".into(), arguments: json!({}) };
-    let err = api.tools.dispatch_call(&call).await.expect_err("should error");
-    assert!(err.to_string().contains("path required"));
+    when!(s, "the read tool is dispatched with no path argument", {
+        let err = api.tools.dispatch_call(&call).await.expect_err("should error");
+        then!(s, "the tool result is an error containing the exception message", {
+            assert!(err.to_string().contains("path required"));
+        });
+    });
 }
 
 #[tokio::test]
 async fn write_tool_writes_file() {
+    let mut s = scenario!("scripting", "Host functions with permissions", "Read host function works by default");
     let (_tmp, config) = tmp_repo();
     let jail = Jail::new(config.repo_root.clone());
     let ext = ScriptExtension::from_file(
@@ -79,14 +97,19 @@ async fn write_tool_writes_file() {
         name: "write".into(),
         arguments: json!({ "path": "out.txt", "content": "hello" }),
     };
-    let result = api.tools.dispatch_call(&call).await.expect("write ok");
-    assert_eq!(result, "wrote 5 bytes to out.txt");
-    let written = std::fs::read_to_string(config.repo_root.join("out.txt")).unwrap();
-    assert_eq!(written, "hello");
+    when!(s, "the write tool is dispatched with write permission granted", {
+        let result = api.tools.dispatch_call(&call).await.expect("write ok");
+        let written = std::fs::read_to_string(config.repo_root.join("out.txt")).unwrap();
+        then!(s, "the file is written and the byte count is reported", {
+            assert_eq!(result, "wrote 5 bytes to out.txt");
+            assert_eq!(written, "hello");
+        });
+    });
 }
 
 #[tokio::test]
 async fn write_tool_blocked_without_permission() {
+    let mut s = scenario!("scripting", "Host functions with permissions", "Write host function blocked without flag");
     let (_tmp, config) = tmp_repo();
     let jail = Jail::new(config.repo_root.clone());
     let ext = ScriptExtension::from_file(
@@ -103,29 +126,42 @@ async fn write_tool_blocked_without_permission() {
         name: "write".into(),
         arguments: json!({ "path": "out.txt", "content": "hello" }),
     };
-    let err = api.tools.dispatch_call(&call).await.expect_err("should be blocked");
-    assert!(err.to_string().contains("write disabled"));
+    when!(s, "the write tool is dispatched with no write permission flag set", {
+        let err = api.tools.dispatch_call(&call).await.expect_err("should be blocked");
+        then!(s, "the engine throws an error caught as a tool result", {
+            assert!(err.to_string().contains("write disabled"));
+        });
+    });
 }
 
 #[test]
 fn all_scripts_parse() {
-    for name in ["read", "write", "edit", "grep", "glob", "bash"] {
-        let (_tmp, config) = tmp_repo();
-        let jail = Jail::new(config.repo_root.clone());
-        let path = extensions_dir().join(format!("{name}.rhai"));
-        ScriptExtension::from_file(&path, jail, config, ScriptPermissions::default())
-            .unwrap_or_else(|e| panic!("parse {name}.rhai: {e}"));
-    }
+    let mut s = scenario!("scripting", "Script lifecycle", "Parse error in one script does not prevent others loading");
+    when!(s, "every first-party script is loaded with default permissions", {
+        for name in ["read", "write", "edit", "grep", "glob", "bash"] {
+            let (_tmp, config) = tmp_repo();
+            let jail = Jail::new(config.repo_root.clone());
+            let path = extensions_dir().join(format!("{name}.rhai"));
+            ScriptExtension::from_file(&path, jail, config, ScriptPermissions::default())
+                .unwrap_or_else(|e| panic!("parse {name}.rhai: {e}"));
+        }
+        then!(s, "all scripts parse without error", {});
+    });
 }
 
 // keep a reference to Value so unused-warnings stay quiet for future tests
 #[test]
 fn _value_type_present() {
-    let _v: Value = json!({});
+    let mut s = scenario!("scripting", "Event maps", "tool_call hook allows a tool");
+    when!(s, "a serde_json::Value is constructed", {});
+    then!(s, "the value type is usable for future tool argument assertions", {
+        let _v: Value = json!({});
+    });
 }
 
 #[test]
 fn context_view_builds_spec() {
+    let mut s = scenario!("extensions", "ExtensionApi surface is shared", "Rust extension can access all surfaces");
     let ext = load_script("context", ScriptPermissions::default());
     let mut api = ExtensionApi::noop();
     ext.register(&mut api);
@@ -142,34 +178,32 @@ fn context_view_builds_spec() {
         "max_turns": 20
     });
 
-    let spec = inout_core::build_view(builder, &snapshot).expect("view builds");
+    when!(s, "build_view runs over a snapshot with two user turns", {
+        let spec = inout_core::build_view(builder, &snapshot).expect("view builds");
+        then!(s, "the spec has two turns with the expected blocks and token totals", {
+            assert_eq!(spec.turns.len(), 2, "two user turns expected");
+            assert!(spec.turns[0].preview.contains("hello"), "first turn preview should contain hello");
 
-    assert_eq!(spec.turns.len(), 2, "two user turns expected");
-    assert!(spec.turns[0].preview.contains("hello"), "first turn preview should contain hello");
+            let second_blocks: Vec<_> = spec.turns[1].blocks.iter().collect();
+            assert!(
+                second_blocks.iter().any(|b| matches!(b, inout_core::extension::ViewBlock::ToolCall { name, .. } if name == "read")),
+                "second turn should contain a read tool_call"
+            );
+            assert!(
+                second_blocks.iter().any(|b| matches!(b, inout_core::extension::ViewBlock::ToolResult { tool_name, .. } if tool_name == "read")),
+                "second turn should contain a read tool_result"
+            );
 
-    let second_blocks: Vec<_> = spec.turns[1].blocks.iter().collect();
-    assert!(
-        second_blocks.iter().any(|b| matches!(b, inout_core::extension::ViewBlock::ToolCall { name, .. } if name == "read")),
-        "second turn should contain a read tool_call"
-    );
-    assert!(
-        second_blocks.iter().any(|b| matches!(b, inout_core::extension::ViewBlock::ToolResult { tool_name, .. } if tool_name == "read")),
-        "second turn should contain a read tool_result"
-    );
-
-    assert!(spec.total_tokens > 0, "total_tokens should be positive");
-    assert_eq!(spec.limit_tokens, 128000, "limit_tokens should default to 128000");
-    assert!(spec.context_pct <= 100, "context_pct should be clamped to 100");
-}
-
-fn load_with_perms(name: &str, perms: ScriptPermissions, config: &Config) -> ScriptExtension {
-    let jail = Jail::new(config.repo_root.clone());
-    let path = extensions_dir().join(format!("{name}.rhai"));
-    ScriptExtension::from_file(&path, jail, config.clone(), perms).expect("script loads")
+            assert!(spec.total_tokens > 0, "total_tokens should be positive");
+            assert_eq!(spec.limit_tokens, 128000, "limit_tokens should default to 128000");
+            assert!(spec.context_pct <= 100, "context_pct should be clamped to 100");
+        });
+    });
 }
 
 #[tokio::test]
 async fn edit_tool_replaces_first_occurrence() {
+    let mut s = scenario!("scripting", "Tool handler signature", "Tool handler returns string");
     let (_tmp, config) = tmp_repo();
     std::fs::write(config.repo_root.join("f.txt"), "foo bar foo").unwrap();
     let ext = load_with_perms(
@@ -184,14 +218,19 @@ async fn edit_tool_replaces_first_occurrence() {
         name: "edit".into(),
         arguments: json!({ "path": "f.txt", "old_string": "foo", "new_string": "baz" }),
     };
-    let result = api.tools.dispatch_call(&call).await.expect("edit ok");
-    assert!(result.contains("replaced"));
-    let written = std::fs::read_to_string(config.repo_root.join("f.txt")).unwrap();
-    assert_eq!(written, "baz bar foo");
+    when!(s, "the edit tool is dispatched with a write permission and a single match", {
+        let result = api.tools.dispatch_call(&call).await.expect("edit ok");
+        let written = std::fs::read_to_string(config.repo_root.join("f.txt")).unwrap();
+        then!(s, "the first occurrence is replaced and a confirmation is returned", {
+            assert!(result.contains("replaced"));
+            assert_eq!(written, "baz bar foo");
+        });
+    });
 }
 
 #[tokio::test]
 async fn edit_tool_old_string_not_found_errors() {
+    let mut s = scenario!("scripting", "Tool handler signature", "Tool handler throws exception");
     let (_tmp, config) = tmp_repo();
     std::fs::write(config.repo_root.join("f.txt"), "hello").unwrap();
     let ext = load_with_perms(
@@ -206,12 +245,17 @@ async fn edit_tool_old_string_not_found_errors() {
         name: "edit".into(),
         arguments: json!({ "path": "f.txt", "old_string": "xyz", "new_string": "abc" }),
     };
-    let err = api.tools.dispatch_call(&call).await.expect_err("should error");
-    assert!(err.to_string().contains("old_string not found"));
+    when!(s, "the edit tool is dispatched with an old_string not present in the file", {
+        let err = api.tools.dispatch_call(&call).await.expect_err("should error");
+        then!(s, "the tool result is an error reporting the missing old_string", {
+            assert!(err.to_string().contains("old_string not found"));
+        });
+    });
 }
 
 #[tokio::test]
 async fn grep_tool_filters_matching_lines() {
+    let mut s = scenario!("scripting", "Tool handler signature", "Tool handler returns string");
     let (_tmp, config) = tmp_repo();
     std::fs::write(config.repo_root.join("f.txt"), "apple\nbanana\napricot\n").unwrap();
     let ext = load_with_perms("grep", ScriptPermissions::default(), &config);
@@ -222,12 +266,17 @@ async fn grep_tool_filters_matching_lines() {
         name: "grep".into(),
         arguments: json!({ "path": "f.txt", "pattern": "ap" }),
     };
-    let result = api.tools.dispatch_call(&call).await.expect("grep ok");
-    assert_eq!(result, "apple\napricot");
+    when!(s, "the grep tool is dispatched with a case-sensitive pattern", {
+        let result = api.tools.dispatch_call(&call).await.expect("grep ok");
+        then!(s, "only the matching lines are returned", {
+            assert_eq!(result, "apple\napricot");
+        });
+    });
 }
 
 #[tokio::test]
 async fn grep_tool_case_insensitive() {
+    let mut s = scenario!("scripting", "Tool handler signature", "Tool handler returns string");
     let (_tmp, config) = tmp_repo();
     std::fs::write(config.repo_root.join("f.txt"), "Hello\nworld\nHELLO\n").unwrap();
     let ext = load_with_perms("grep", ScriptPermissions::default(), &config);
@@ -238,12 +287,17 @@ async fn grep_tool_case_insensitive() {
         name: "grep".into(),
         arguments: json!({ "path": "f.txt", "pattern": "hello", "case_sensitive": false }),
     };
-    let result = api.tools.dispatch_call(&call).await.expect("grep ok");
-    assert_eq!(result, "Hello\nHELLO");
+    when!(s, "the grep tool is dispatched with case-insensitive matching", {
+        let result = api.tools.dispatch_call(&call).await.expect("grep ok");
+        then!(s, "lines matching regardless of case are returned", {
+            assert_eq!(result, "Hello\nHELLO");
+        });
+    });
 }
 
 #[tokio::test]
 async fn glob_tool_lists_matching_files() {
+    let mut s = scenario!("scripting", "Tool handler signature", "Tool handler returns string");
     let (_tmp, config) = tmp_repo();
     std::fs::write(config.repo_root.join("a.txt"), "").unwrap();
     std::fs::write(config.repo_root.join("b.rs"), "").unwrap();
@@ -257,15 +311,20 @@ async fn glob_tool_lists_matching_files() {
         name: "glob".into(),
         arguments: json!({ "path": "", "pattern": "*.txt" }),
     };
-    let result = api.tools.dispatch_call(&call).await.expect("glob ok");
-    let entries: Vec<&str> = result.split('\n').filter(|s| !s.is_empty()).collect();
-    assert!(entries.contains(&"a.txt"));
-    assert!(entries.contains(&"sub/c.txt"));
-    assert!(!entries.contains(&"b.rs"));
+    when!(s, "the glob tool is dispatched with a txt pattern", {
+        let result = api.tools.dispatch_call(&call).await.expect("glob ok");
+        let entries: Vec<&str> = result.split('\n').filter(|s| !s.is_empty()).collect();
+        then!(s, "only txt files at any depth are listed", {
+            assert!(entries.contains(&"a.txt"));
+            assert!(entries.contains(&"sub/c.txt"));
+            assert!(!entries.contains(&"b.rs"));
+        });
+    });
 }
 
 #[tokio::test]
 async fn bash_tool_blocked_binary_rejected() {
+    let mut s = scenario!("scripting", "Event maps", "tool_call hook blocks a tool");
     let (_tmp, config) = tmp_repo();
     let ext = load_with_perms(
         "bash",
@@ -279,12 +338,17 @@ async fn bash_tool_blocked_binary_rejected() {
         name: "bash".into(),
         arguments: json!({ "command": "rm -f x" }),
     };
-    let err = api.tools.dispatch_call(&call).await.expect_err("should block rm");
-    assert!(err.to_string().contains("rm is blocked"));
+    when!(s, "the bash tool is dispatched with a blocked binary", {
+        let err = api.tools.dispatch_call(&call).await.expect_err("should block rm");
+        then!(s, "the tool call is blocked with a reason", {
+            assert!(err.to_string().contains("rm is blocked"));
+        });
+    });
 }
 
 #[tokio::test]
 async fn bash_tool_runs_allowed_command() {
+    let mut s = scenario!("scripting", "Tool handler signature", "Tool handler returns string");
     let (_tmp, config) = tmp_repo();
     let ext = load_with_perms(
         "bash",
@@ -298,21 +362,31 @@ async fn bash_tool_runs_allowed_command() {
         name: "bash".into(),
         arguments: json!({ "command": "echo hello" }),
     };
-    let result = api.tools.dispatch_call(&call).await.expect("bash ok");
-    assert_eq!(result.trim(), "hello");
+    when!(s, "the bash tool is dispatched with an allowed command", {
+        let result = api.tools.dispatch_call(&call).await.expect("bash ok");
+        then!(s, "the command output is returned as the tool result", {
+            assert_eq!(result.trim(), "hello");
+        });
+    });
 }
 
 #[test]
 fn fullview_registers_view_and_command() {
+    let mut s = scenario!("extensions", "Command registry surface is defined", "Command registers and dispatches");
     let ext = load_script("fullview", ScriptPermissions::default());
     let mut api = ExtensionApi::noop();
-    ext.register(&mut api);
-    assert!(api.views.get("full").is_some(), "full view should be registered");
-    assert!(api.commands.get("full").is_some(), "/full command should be registered");
+    when!(s, "the fullview script is registered", {
+        ext.register(&mut api);
+        then!(s, "both the full view and the /full command are registered", {
+            assert!(api.views.get("full").is_some(), "full view should be registered");
+            assert!(api.commands.get("full").is_some(), "/full command should be registered");
+        });
+    });
 }
 
 #[test]
 fn fullview_builds_spec_with_system_prompt() {
+    let mut s = scenario!("extensions", "ExtensionApi surface is shared", "Rust extension can access all surfaces");
     let ext = load_script("fullview", ScriptPermissions::default());
     let mut api = ExtensionApi::noop();
     ext.register(&mut api);
@@ -327,38 +401,43 @@ fn fullview_builds_spec_with_system_prompt() {
         "max_turns": 20
     });
 
-    let spec = inout_core::build_view(builder, &snapshot).expect("full view builds");
-
-    // system prompt turn + one user turn = 2 turns
-    assert!(spec.turns.len() >= 2, "should have system prompt + user turn");
-    // first turn is the system prompt
-    assert!(
-        spec.turns[0].preview.contains("system prompt"),
-        "first turn should be system prompt, got: {}",
-        spec.turns[0].preview
-    );
-    // find the user turn and check reasoning is present in blocks
-    let user_turn =
-        spec.turns.iter().find(|t| t.preview.contains("2+2")).expect("should find user turn");
-    let has_reasoning = user_turn.blocks.iter().any(|b| {
-        matches!(b, inout_core::extension::ViewBlock::AssistantText { text, .. } if text.contains("[reasoning]"))
+    when!(s, "build_view runs over a snapshot with a system prompt and reasoning", {
+        let spec = inout_core::build_view(builder, &snapshot).expect("full view builds");
+        then!(s, "the spec includes the system prompt turn and a reasoning block on the user turn", {
+            assert!(spec.turns.len() >= 2, "should have system prompt + user turn");
+            assert!(
+                spec.turns[0].preview.contains("system prompt"),
+                "first turn should be system prompt, got: {}",
+                spec.turns[0].preview
+            );
+            let user_turn =
+                spec.turns.iter().find(|t| t.preview.contains("2+2")).expect("should find user turn");
+            let has_reasoning = user_turn.blocks.iter().any(|b| {
+                matches!(b, inout_core::extension::ViewBlock::AssistantText { text, .. } if text.contains("[reasoning]"))
+            });
+            assert!(has_reasoning, "user turn should contain reasoning block");
+        });
     });
-    assert!(has_reasoning, "user turn should contain reasoning block");
 }
 
 #[test]
 fn commands_register_core_slash_commands() {
+    let mut s = scenario!("extensions", "Command registry surface is defined", "Command registers and dispatches");
     let ext = load_script("commands", ScriptPermissions::default());
     let mut api = ExtensionApi::noop();
-    ext.register(&mut api);
-
-    for cmd in ["help", "clear", "new", "model", "undo", "exit", "reload", "context"] {
-        assert!(api.commands.get(cmd).is_some(), "/{cmd} should be registered");
-    }
+    when!(s, "the commands script is registered", {
+        ext.register(&mut api);
+        then!(s, "every core slash command is registered", {
+            for cmd in ["help", "clear", "new", "model", "undo", "exit", "reload", "context"] {
+                assert!(api.commands.get(cmd).is_some(), "/{cmd} should be registered");
+            }
+        });
+    });
 }
 
 #[test]
 fn commands_clear_returns_clear_action() {
+    let mut s = scenario!("extensions", "Command registry surface is defined", "Command registers and dispatches");
     let ext = load_script("commands", ScriptPermissions::default());
     let mut api = ExtensionApi::noop();
     ext.register(&mut api);
@@ -369,7 +448,11 @@ fn commands_clear_returns_clear_action() {
         args: String::new(),
         snapshot: json!({"messages":[],"max_turns":20}),
     };
-    let result = api.commands.dispatch("clear", &ctx).expect("dispatch clear");
-    assert_eq!(result.message, "history cleared");
-    assert!(matches!(result.action, Some(inout_core::CommandAction::ClearHistory)));
+    when!(s, "the clear command is dispatched", {
+        let result = api.commands.dispatch("clear", &ctx).expect("dispatch clear");
+        then!(s, "the result clears history and reports it", {
+            assert_eq!(result.message, "history cleared");
+            assert!(matches!(result.action, Some(inout_core::CommandAction::ClearHistory)));
+        });
+    });
 }

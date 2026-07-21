@@ -105,10 +105,16 @@ fn now() -> u64 {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[test]
     fn compact_threshold_respected() {
+        let mut s = scenario!(
+            "sessions",
+            "Compaction emits before/after events",
+            "Older messages replaced by summary"
+        );
         let ctx = SessionContext {
             messages: (0..10)
                 .map(|i| crate::repo::MessageContext {
@@ -119,11 +125,21 @@ mod tests {
             ..SessionContext::default()
         };
 
-        assert!(compact(&CompactionSettings::default(), "leaf", &ctx).is_err());
+        when!(s, "compact runs against a session below the message threshold", {
+            let result = compact(&CompactionSettings::default(), "leaf", &ctx);
+            then!(s, "the call returns an error without compacting", {
+                assert!(result.is_err());
+            });
+        });
     }
 
     #[test]
     fn compact_produces_summary() {
+        let mut s = scenario!(
+            "sessions",
+            "Compaction emits before/after events",
+            "Older messages replaced by summary"
+        );
         let ctx = SessionContext {
             messages: (0..80)
                 .map(|i| crate::repo::MessageContext {
@@ -134,9 +150,13 @@ mod tests {
             ..SessionContext::default()
         };
 
-        let (before, after, entry) = compact(&CompactionSettings::default(), "leaf", &ctx).unwrap();
-        assert_eq!(before.count, 64);
-        assert_eq!(after.compacted_count, 64);
-        assert!(matches!(entry, SessionEntry::Compaction(_)));
+        when!(s, "compact runs against a session exceeding the message threshold", {
+            let (before, after, entry) = compact(&CompactionSettings::default(), "leaf", &ctx).unwrap();
+            then!(s, "a compaction entry is appended covering the older messages", {
+                assert_eq!(before.count, 64);
+                assert_eq!(after.compacted_count, 64);
+                assert!(matches!(entry, SessionEntry::Compaction(_)));
+            });
+        });
     }
 }

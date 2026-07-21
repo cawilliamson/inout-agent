@@ -6,6 +6,7 @@ use inout::llm::{LlmClient, ReplayLlmClient};
 use inout::Agent;
 use inout_core::config::Config;
 use inout_core::tools::ToolCall;
+use inout_testing::{scenario, then, when};
 use serde_json::json;
 
 fn ensure_extensions_dir() {
@@ -17,6 +18,7 @@ fn ensure_extensions_dir() {
 
 #[tokio::test]
 async fn agent_dispatches_read_tool_then_responds() {
+    let mut s = scenario!("core", "Agent loop full turn", "Full turn with tool use");
     ensure_extensions_dir();
     let tmp = tempfile::TempDir::new().unwrap();
     let repo = tmp.path().to_path_buf();
@@ -40,15 +42,20 @@ async fn agent_dispatches_read_tool_then_responds() {
     let mut agent = Agent::new(Config { repo_root: repo, ..Config::default() }, llm);
     agent.load_extensions();
 
-    let reply = agent.run_turn("read hello.txt".to_string()).await.unwrap();
-    assert_eq!(reply, "the file contains: world");
-    // history should contain: user, assistant(tool), tool, assistant(final)
-    assert_eq!(agent.history.messages.len(), 4);
-    assert_eq!(agent.history.messages[2].content, "world");
+    when!(s, "run_turn is invoked with a user message", {
+        let reply = agent.run_turn("read hello.txt".to_string()).await.unwrap();
+        then!(s, "the provider is called, the tool is dispatched, and the final response is returned", {
+            assert_eq!(reply, "the file contains: world");
+            // history should contain: user, assistant(tool), tool, assistant(final)
+            assert_eq!(agent.history.messages.len(), 4);
+            assert_eq!(agent.history.messages[2].content, "world");
+        });
+    });
 }
 
 #[tokio::test]
 async fn agent_rejects_jail_escape_via_tool() {
+    let mut s = scenario!("security", "Jail path confinement", "Agent tool call escapes are rejected");
     ensure_extensions_dir();
     let tmp = tempfile::TempDir::new().unwrap();
     let repo = tmp.path().to_path_buf();
@@ -69,8 +76,11 @@ async fn agent_rejects_jail_escape_via_tool() {
     let mut agent = Agent::new(Config { repo_root: repo, ..Config::default() }, llm);
     agent.load_extensions();
 
-    let reply = agent.run_turn("read /etc/passwd".to_string()).await.unwrap();
-    // tool error should surface in history, agent still completes
-    assert_eq!(reply, "could not read");
-    assert!(agent.history.messages[2].content.starts_with("error:"));
+    when!(s, "run_turn is invoked with a tool call that escapes the jail", {
+        let reply = agent.run_turn("read /etc/passwd".to_string()).await.unwrap();
+        then!(s, "the tool error surfaces in history and the agent still completes", {
+            assert_eq!(reply, "could not read");
+            assert!(agent.history.messages[2].content.starts_with("error:"));
+        });
+    });
 }

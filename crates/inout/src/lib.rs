@@ -270,6 +270,7 @@ fn compiled_extensions() -> Vec<Box<dyn inout_core::Extension>> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
     use crate::llm::ReplayLlmClient;
 
@@ -282,22 +283,28 @@ mod tests {
 
     #[test]
     fn agent_has_default_system_prompt() {
+        let mut s = scenario!("core", "Minimal configuration", "Config loads required fields");
         let dir = std::env::temp_dir();
         let cfg = Config { repo_root: dir.clone(), ..Config::default() };
         ensure_extensions_dir();
         let llm: Box<dyn LlmClient> = Box::new(ReplayLlmClient::new(vec![]));
         let mut agent = Agent::new(cfg, llm);
         agent.load_extensions();
-        assert!(agent.history.system_prompt.is_some());
-        let prompt = agent.history.system_prompt.as_ref().unwrap();
-        assert!(prompt.contains("InOut"));
-        assert!(prompt.contains("read"));
-        assert!(prompt.contains("write"));
-        assert!(prompt.contains("bash"));
+        when!(s, "an agent is constructed and extensions are loaded", {
+            assert!(agent.history.system_prompt.is_some());
+            let prompt = agent.history.system_prompt.as_ref().unwrap();
+            then!(s, "the default system prompt mentions inout and the core tools", {
+                assert!(prompt.contains("InOut"));
+                assert!(prompt.contains("read"));
+                assert!(prompt.contains("write"));
+                assert!(prompt.contains("bash"));
+            });
+        });
     }
 
     #[test]
     fn agent_system_prompt_in_request() {
+        let mut s = scenario!("core", "Minimal configuration", "Config loads required fields");
         let dir = std::env::temp_dir();
         let cfg = Config { repo_root: dir, ..Config::default() };
         ensure_extensions_dir();
@@ -305,9 +312,13 @@ mod tests {
         let mut agent = Agent::new(cfg, llm);
         agent.load_extensions();
         agent.history.append_user("hi".to_string());
-        let req = agent.history.to_request("m", &[]);
-        assert_eq!(req.messages.len(), 2);
-        assert!(req.messages[0].content.contains("InOut"));
-        assert_eq!(req.messages[1].role, history::Role::User);
+        when!(s, "to_request is called on an agent with a loaded system prompt", {
+            let req = agent.history.to_request("m", &[]);
+            then!(s, "the system prompt is the first message and the user message follows", {
+                assert_eq!(req.messages.len(), 2);
+                assert!(req.messages[0].content.contains("InOut"));
+                assert_eq!(req.messages[1].role, history::Role::User);
+            });
+        });
     }
 }

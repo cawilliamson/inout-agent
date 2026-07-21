@@ -197,10 +197,16 @@ fn next_steps_from_messages(messages: &[crate::repo::MessageContext]) -> Vec<Str
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[tokio::test]
-    async fn handoff_round_trip() {
+    async fn write_handoff_round_trip() {
+        let mut s = scenario!(
+            "sessions",
+            "Continuity handoff writes context.md",
+            "Write handoff"
+        );
         let tmp = tempfile::tempdir().unwrap();
         let files = ContinuityFiles::new(tmp.path());
         let session = crate::repo::SessionContext {
@@ -221,20 +227,33 @@ mod tests {
             ..crate::repo::SessionContext::default()
         };
 
-        files.write_handoff(&session).await.unwrap();
-        let loaded = files.load_handoff().await.unwrap();
-        assert!(!loaded.goal.is_empty());
-        assert_eq!(loaded.files.len(), 2);
-        assert_eq!(loaded.next_steps.len(), 1);
+        when!(s, "write_handoff is called with a multi-message session", {
+            files.write_handoff(&session).await.unwrap();
+            let loaded = files.load_handoff().await.unwrap();
+            then!(s, "the handoff goal, touched files, and next steps are populated", {
+                assert!(!loaded.goal.is_empty());
+                assert_eq!(loaded.files.len(), 2);
+                assert_eq!(loaded.next_steps.len(), 1);
+            });
+        });
     }
 
     #[tokio::test]
-    async fn session_log_appends() {
+    async fn session_log_appends_entry() {
+        let mut s = scenario!(
+            "sessions",
+            "Continuity handoff loads on demand",
+            "Continuity files are read lazily"
+        );
         let tmp = tempfile::tempdir().unwrap();
         let files = ContinuityFiles::new(tmp.path());
-        files.write_session_log_entry("refactor auth", &["src/auth.rs".to_string()]).await.unwrap();
-        let content = tokio::fs::read_to_string(&files.session_log).await.unwrap();
-        assert!(content.contains("refactor auth"));
-        assert!(content.contains("src/auth.rs"));
+        when!(s, "write_session_log_entry appends a goal and touched files", {
+            files.write_session_log_entry("refactor auth", &["src/auth.rs".to_string()]).await.unwrap();
+            let content = tokio::fs::read_to_string(&files.session_log).await.unwrap();
+            then!(s, "the session log contains the goal and the file path", {
+                assert!(content.contains("refactor auth"));
+                assert!(content.contains("src/auth.rs"));
+            });
+        });
     }
 }

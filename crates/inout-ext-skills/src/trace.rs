@@ -54,6 +54,7 @@ impl SkillTrace {
 
 #[cfg(test)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     fn dummy_skill(name: &str) -> Skill {
@@ -71,22 +72,40 @@ mod tests {
     }
 
     #[test]
-    fn trace_records_turn() {
+    fn trace_entry_stores_matched_skills_and_reason() {
+        let mut s = scenario!(
+            "skills",
+            "Skill trace records one entry per turn",
+            "Trace entry stores matched skills and reason"
+        );
         let mut trace = SkillTrace::new();
         let skill = dummy_skill("git");
-        trace.push(1, "commit changes please", &[&skill], None);
-        let entry = trace.for_turn(1).unwrap();
-        assert_eq!(entry.matched_skills, vec![String::from("git")]);
-        assert_eq!(entry.user_preview, "commit changes please");
-        assert_eq!(entry.reason, None);
+        when!(s, "a turn with a matched skill and no reason is pushed", {
+            trace.push(1, "commit changes please", &[&skill], None);
+            let entry = trace.for_turn(1).unwrap();
+            then!(s, "for_turn returns the matched skill names and a null reason", {
+                assert_eq!(entry.matched_skills, vec![String::from("git")]);
+                assert_eq!(entry.user_preview, "commit changes please");
+                assert_eq!(entry.reason, None);
+            });
+        });
     }
 
     #[test]
-    fn preview_truncated() {
+    fn trace_entry_records_no_match_reason() {
+        let mut s = scenario!(
+            "skills",
+            "Skill trace records one entry per turn",
+            "Trace entry records no-match reason"
+        );
         let mut trace = SkillTrace::new();
-        trace.push(2, "a".repeat(120).as_str(), &[], Some("no match"));
-        let entry = trace.for_turn(2).unwrap();
-        assert_eq!(entry.user_preview.len(), 60);
-        assert_eq!(entry.reason, Some(String::from("no match")));
+        when!(s, "a turn with no matched skills and reason 'no match' is pushed", {
+            trace.push(2, "a".repeat(120).as_str(), &[], Some("no match"));
+            let entry = trace.for_turn(2).unwrap();
+            then!(s, "the preview is truncated and the reason is recorded", {
+                assert_eq!(entry.user_preview.len(), 60);
+                assert_eq!(entry.reason, Some(String::from("no match")));
+            });
+        });
     }
 }

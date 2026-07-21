@@ -3,6 +3,7 @@ members = [
     "crates/inout-core",
     "crates/inout-ext-sessions",
     "crates/inout-ext-skills",
+    "crates/inout-testing",
     "crates/inout",
 ]
 resolver = "2"

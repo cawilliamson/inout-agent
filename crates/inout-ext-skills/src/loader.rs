@@ -104,33 +104,47 @@ fn bundled_skills() -> Vec<Skill> {
 
 #[cfg(test)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[test]
-    fn project_overrides_global() {
+    fn project_overrides_global_on_name_collision() {
+        let mut s = scenario!(
+            "skills",
+            "Skill source tiers and override order",
+            "Project overrides global on name collision"
+        );
         let global = tempfile::tempdir().unwrap();
         let project = tempfile::tempdir().unwrap();
-
         std::fs::write(global.path().join("rust.md"), "---\npriority: 1\n---\nglobal rust\n")
             .unwrap();
         std::fs::write(project.path().join("rust.md"), "---\npriority: 5\n---\nproject rust\n")
             .unwrap();
 
-        let skills = load_all_skills(&[global.path().to_path_buf(), project.path().to_path_buf()]);
-        let rust = skills.iter().find(|s| s.name == "rust").unwrap();
-        assert_eq!(rust.priority, 5);
-        assert_eq!(rust.source, SkillSource::External);
+        when!(s, "load_all_skills runs over the global then project directories", {
+            let skills = load_all_skills(&[global.path().to_path_buf(), project.path().to_path_buf()]);
+            let rust = skills.iter().find(|s| s.name == "rust").unwrap();
+            then!(s, "the project skill wins on name collision", {
+                assert_eq!(rust.priority, 5);
+                assert_eq!(rust.source, SkillSource::External);
+            });
+        });
     }
 
     #[test]
     fn alphabetical_within_tier() {
+        let mut s = scenario!("skills", "Script discovery", "Within a directory, files are sorted alphabetically");
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("z.md"), "---\n---\nz\n").unwrap();
         std::fs::write(dir.path().join("a.md"), "---\n---\na\n").unwrap();
         std::fs::write(dir.path().join("m.md"), "---\n---\nm\n").unwrap();
 
-        let skills = load_from_dir(dir.path(), SkillSource::External);
-        let names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, vec!["a", "m", "z"]);
+        when!(s, "load_from_dir scans the directory", {
+            let skills = load_from_dir(dir.path(), SkillSource::External);
+            let names: Vec<_> = skills.iter().map(|s| s.name.as_str()).collect();
+            then!(s, "skills are returned in alphabetical order", {
+                assert_eq!(names, vec!["a", "m", "z"]);
+            });
+        });
     }
 }

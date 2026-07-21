@@ -56,23 +56,33 @@ impl Extension for SessionsExtension {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn extension_name() {
+        let mut s = scenario!("extensions", "Extension naming is defined", "Rust crate name matches extension name");
         let ext = SessionsExtension::new();
-        assert_eq!(ext.name(), "sessions");
+        when!(s, "Extension::name is queried", {});
+        then!(s, "it returns the sessions kebab name", {
+            assert_eq!(ext.name(), "sessions");
+        });
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn extension_registers_commands() {
+        let mut s = scenario!("extensions", "Command registry surface is defined", "Command registers and dispatches");
         let ext = SessionsExtension::new();
         let mut api = ExtensionApi::noop();
-        ext.register(&mut api);
-        let names = api.commands.names();
-        assert!(names.contains(&"sessions".to_string()));
-        assert!(names.contains(&"branch".to_string()));
-        assert!(names.contains(&"switch".to_string()));
-        assert!(names.contains(&"compact".to_string()));
+        when!(s, "the sessions extension is registered", {
+            ext.register(&mut api);
+            let names = api.commands.names();
+            then!(s, "the session, branch, switch, and compact commands are registered", {
+                assert!(names.contains(&"sessions".to_string()));
+                assert!(names.contains(&"branch".to_string()));
+                assert!(names.contains(&"switch".to_string()));
+                assert!(names.contains(&"compact".to_string()));
+            });
+        });
     }
 }

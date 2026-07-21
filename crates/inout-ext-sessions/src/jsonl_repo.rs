@@ -455,8 +455,8 @@ fn append_to_journal_blocking(journal: &Path, entry: &SessionEntry) -> Result<()
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use crate::entry::MessageEntry;
-
     use super::*;
 
     fn message(parent_id: Option<String>, role: &str, content: &str) -> SessionEntry {
@@ -469,32 +469,41 @@ mod tests {
 
     #[tokio::test]
     async fn append_and_reopen() {
+        let mut s = scenario!(
+            "sessions",
+            "Atomic append in JsonlSessionRepo",
+            "Append flushes before return"
+        );
         let tmp = tempfile::tempdir().unwrap();
         let repo = JsonlSessionRepo::new(tmp.path()).await.unwrap();
-
         let leaf = repo.get_metadata().await.unwrap().leaf_id;
         let m1 = message(Some(leaf.clone()), "user", "hello");
-        repo.append_entry(m1.clone()).await.unwrap();
-
-        let repo2 = JsonlSessionRepo::new(tmp.path()).await.unwrap();
-        let ctx = repo2.build_context(&repo2.get_metadata().await.unwrap().leaf_id).await.unwrap();
-        assert_eq!(ctx.messages.len(), 1);
-        assert_eq!(ctx.messages[0].content, "hello");
+        when!(s, "append_entry is called with a valid message entry", {
+            repo.append_entry(m1.clone()).await.unwrap();
+            let repo2 = JsonlSessionRepo::new(tmp.path()).await.unwrap();
+            let ctx = repo2.build_context(&repo2.get_metadata().await.unwrap().leaf_id).await.unwrap();
+            then!(s, "the entry is present on disk before the future resolves", {
+                assert_eq!(ctx.messages.len(), 1);
+                assert_eq!(ctx.messages[0].content, "hello");
+            });
+        });
     }
 
     #[tokio::test]
     async fn fork_creates_branch() {
+        let mut s = scenario!("sessions", "Branching", "Fork a branch");
         let tmp = tempfile::tempdir().unwrap();
         let repo = JsonlSessionRepo::new(tmp.path()).await.unwrap();
-
         let leaf = repo.get_metadata().await.unwrap().leaf_id;
         let m1 = message(Some(leaf.clone()), "user", "hello");
         repo.append_entry(m1).await.unwrap();
-
-        let new_leaf = repo.fork(&leaf, ForkOptions { name: "feature".to_string() }).await.unwrap();
-        assert_ne!(new_leaf, leaf);
-
-        let list = repo.list(ListOptions::default()).await.unwrap();
-        assert_eq!(list.len(), 3);
+        when!(s, "fork is called with the existing leaf as the fork point", {
+            let new_leaf = repo.fork(&leaf, ForkOptions { name: "feature".to_string() }).await.unwrap();
+            let list = repo.list(ListOptions::default()).await.unwrap();
+            then!(s, "a new leaf is created whose parent_id matches the fork point", {
+                assert_ne!(new_leaf, leaf);
+                assert_eq!(list.len(), 3);
+            });
+        });
     }
 }

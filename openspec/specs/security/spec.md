@@ -115,6 +115,39 @@ The shell sandbox SHALL support three modes: `Off`, `Workdir`, and `Container`. 
 - THEN the command runs in `Workdir` mode
 - AND a warning is emitted explaining the fallback
 
+### Requirement: Jail path confinement
+The `Jail` SHALL confine every file operation to a caller-supplied root. `Jail::resolve` SHALL reject absolute paths, reject `..` escape, reject symlinks that resolve outside the root, and accept relative paths that stay inside the root.
+
+#### Scenario: Relative path inside repo is resolved
+- GIVEN a `Jail` rooted at a temporary directory containing `a.txt`
+- WHEN `resolve` is called with `a.txt`
+- THEN the returned path is `root/a.txt` and the file is readable
+
+#### Scenario: Absolute path is rejected
+- GIVEN a `Jail` rooted at a temporary directory
+- WHEN `resolve` is called with an absolute path such as `/etc/passwd`
+- THEN the call returns an error and no path escapes the root
+
+#### Scenario: Parent-directory escape is rejected
+- GIVEN a `Jail` rooted at a temporary directory
+- WHEN `resolve` is called with a `..` traversal such as `../escape.txt`
+- THEN the call returns an error and no path escapes the root
+
+#### Scenario: Symlink escape is rejected
+- GIVEN a `Jail` rooted at a temporary directory and a symlink that points outside the root
+- WHEN `resolve` is called with the symlink name
+- THEN the call returns an error and no path escapes the root
+
+#### Scenario: Nested relative path is resolved
+- GIVEN a `Jail` rooted at a temporary directory with a nested structure `sub/inner.txt`
+- WHEN `Jail::resolve` is called with `sub/inner.txt`
+- THEN the returned path is `root/sub/inner.txt` and the file is readable
+
+#### Scenario: Agent tool call escapes are rejected
+- GIVEN a configured agent with a `Jail` rooted at a temporary working directory
+- WHEN a tool call requests a path outside the root
+- THEN the tool call fails and no file outside the root is read
+
 ### Requirement: Undo ledger
 The system SHALL record the pre-edit contents of a file before applying an edit. The `/undo` command SHALL restore the most recent snapshot, optionally for a specific path.
 

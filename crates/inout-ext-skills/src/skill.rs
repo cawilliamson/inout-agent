@@ -183,38 +183,65 @@ fn split_frontmatter(raw: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[test]
-    fn parse_full_frontmatter() {
+    fn skill_with_full_frontmatter_parses() {
+        let mut s = scenario!(
+            "skills",
+            "Skill parses from markdown with YAML frontmatter",
+            "Skill with full frontmatter parses"
+        );
         let raw = "---\nname: rust\ncategory: domain\ntrigger: [\"rust\", \"cargo\"]\npriority: 10\ntokens: 700\n---\nbody here\n";
-        let (front, body) = split_frontmatter(raw);
-        assert_eq!(front.trim(), "name: rust\ncategory: domain\ntrigger: [\"rust\", \"cargo\"]\npriority: 10\ntokens: 700");
-        assert_eq!(body, "body here");
-
-        let fm: Frontmatter = serde_yaml::from_str(front).unwrap();
-        assert_eq!(fm.name.as_deref(), Some("rust"));
-        assert_eq!(fm.category, Some(SkillCategory::Domain));
-        assert_eq!(fm.priority, Some(10));
-        assert_eq!(fm.tokens, Some(700));
+        when!(s, "the skill loader splits and parses the frontmatter", {
+            let (front, body) = split_frontmatter(raw);
+            let fm: Frontmatter = serde_yaml::from_str(front).unwrap();
+            then!(s, "all frontmatter fields and the body are recovered", {
+                assert_eq!(front.trim(), "name: rust\ncategory: domain\ntrigger: [\"rust\", \"cargo\"]\npriority: 10\ntokens: 700");
+                assert_eq!(body, "body here");
+                assert_eq!(fm.name.as_deref(), Some("rust"));
+                assert_eq!(fm.category, Some(SkillCategory::Domain));
+                assert_eq!(fm.priority, Some(10));
+                assert_eq!(fm.tokens, Some(700));
+            });
+        });
     }
 
     #[test]
-    fn parse_no_frontmatter_uses_name() {
-        let skill = parse_from_memory("review.md", "review skills\n").unwrap();
-        assert_eq!(skill.name, "review");
-        assert_eq!(skill.category, SkillCategory::Domain);
-        assert_eq!(skill.triggers, vec!["review"]);
-        assert!(skill.content.contains("review skills"));
+    fn skill_with_no_frontmatter_defaults_to_name_and_domain() {
+        let mut s = scenario!(
+            "skills",
+            "Skill parses from markdown with YAML frontmatter",
+            "Skill with missing category and no description defaults to domain"
+        );
+        when!(s, "parse_from_memory reads a bare markdown file", {
+            let skill = parse_from_memory("review.md", "review skills\n").unwrap();
+            then!(s, "the name is the file stem, category is domain, and a name-derived trigger exists", {
+                assert_eq!(skill.name, "review");
+                assert_eq!(skill.category, SkillCategory::Domain);
+                assert_eq!(skill.triggers, vec!["review"]);
+                assert!(skill.content.contains("review skills"));
+            });
+        });
     }
 
     #[test]
-    fn parse_foreign_with_description_is_practice() {
-        let skill =
-            parse_from_memory("git.md", "---\ndescription: git helpers\n---\nuseful git tips\n")
-                .unwrap();
-        assert_eq!(skill.category, SkillCategory::Practice);
-        assert_eq!(skill.triggers, vec!["git"]);
+    fn skill_with_description_defaults_to_practice() {
+        let mut s = scenario!(
+            "skills",
+            "Skill parses from markdown with YAML frontmatter",
+            "Skill with missing category defaults correctly"
+        );
+        when!(s, "parse_from_memory reads a file with a description but no category", {
+            let skill =
+                parse_from_memory("git.md", "---\ndescription: git helpers\n---\nuseful git tips\n")
+                    .unwrap();
+            then!(s, "the category defaults to practice and a name-derived trigger exists", {
+                assert_eq!(skill.category, SkillCategory::Practice);
+                assert_eq!(skill.triggers, vec!["git"]);
+            });
+        });
     }
 
     fn parse_from_memory(file: &str, raw: &str) -> anyhow::Result<Skill> {

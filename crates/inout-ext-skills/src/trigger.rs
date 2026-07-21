@@ -101,39 +101,73 @@ pub fn match_skills_scoped<'a>(
 
 #[cfg(test)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[test]
-    fn non_alpha_is_substring() {
-        assert!(trigger_word_match("main.rs", ".rs"));
-        assert!(trigger_word_match("fn main()", "fn "));
-        assert!(!trigger_word_match("fnovel", "fn "));
+    fn non_alphabetic_trigger_matches_substring() {
+        let mut s = scenario!(
+            "skills",
+            "Trigger word matching with length-aware boundaries",
+            "Non-alphabetic trigger matches substring"
+        );
+        when!(s, "trigger_word_match is called with non-alphabetic triggers", {});
+        then!(s, "triggers match by substring", {
+            assert!(trigger_word_match("main.rs", ".rs"));
+            assert!(trigger_word_match("fn main()", "fn "));
+            assert!(!trigger_word_match("fnovel", "fn "));
+        });
     }
 
     #[test]
-    fn short_alpha_both_boundaries() {
-        assert!(trigger_word_match("open a pr", "pr"));
-        assert!(!trigger_word_match("process", "pr"));
-        assert!(!trigger_word_match("apropos", "pr"));
-        assert!(trigger_word_match("go build", "go"));
+    fn short_alpha_trigger_requires_both_boundaries() {
+        let mut s = scenario!(
+            "skills",
+            "Trigger word matching with length-aware boundaries",
+            "Short trigger requires both boundaries"
+        );
+        when!(s, "trigger_word_match is called with the short trigger 'pr'", {});
+        then!(s, "matches require both word boundaries", {
+            assert!(trigger_word_match("open a pr", "pr"));
+            assert!(!trigger_word_match("process", "pr"));
+            assert!(!trigger_word_match("apropos", "pr"));
+            assert!(trigger_word_match("go build", "go"));
+        });
     }
 
     #[test]
-    fn long_alpha_start_boundary() {
-        assert!(trigger_word_match("review this code", "review"));
-        assert!(trigger_word_match("reviewing is hard", "review"));
-        assert!(!trigger_word_match("preview the change", "review"));
+    fn long_alpha_trigger_matches_start_boundary() {
+        let mut s = scenario!(
+            "skills",
+            "Trigger word matching with length-aware boundaries",
+            "Long trigger matches start boundary inside larger word"
+        );
+        when!(s, "trigger_word_match is called with the long trigger 'review'", {});
+        then!(s, "matches require only a word-start boundary", {
+            assert!(trigger_word_match("review this code", "review"));
+            assert!(trigger_word_match("reviewing is hard", "review"));
+            assert!(!trigger_word_match("preview the change", "review"));
+        });
     }
 
     #[test]
-    fn case_insensitive() {
-        assert!(trigger_word_match("Reviewing", "review"));
-        assert!(trigger_word_match("Open A PR", "pr"));
+    fn trigger_matching_is_case_insensitive() {
+        let mut s = scenario!(
+            "skills",
+            "Trigger word matching with length-aware boundaries",
+            "Case-insensitive matching"
+        );
+        when!(s, "trigger_word_match is called with mixed-case text", {});
+        then!(s, "matches succeed regardless of case", {
+            assert!(trigger_word_match("Reviewing", "review"));
+            assert!(trigger_word_match("Open A PR", "pr"));
+        });
     }
 
     #[test]
     fn scoped_match_includes_practice_and_domain() {
-        let s = Skill {
+        let mut s = scenario!("skills", "Skill categories", "Domain skill triggers only within scope");
+        let s_skill = Skill {
             name: String::from("rust"),
             description: String::new(),
             category: SkillCategory::Domain,
@@ -158,15 +192,23 @@ mod tests {
 
         let mut scope = HashSet::new();
         scope.insert(String::from("rust"));
-        let skills = [s.clone(), practice.clone()];
-        let matched = match_skills_scoped("rust git", &skills, &scope);
-        assert_eq!(matched.len(), 2);
-        assert_eq!(matched[0].name, "rust");
-        assert_eq!(matched[1].name, "git");
+        let skills = [s_skill.clone(), practice.clone()];
+        when!(s, "match_skills_scoped runs with rust in the domain scope", {
+            let matched = match_skills_scoped("rust git", &skills, &scope);
+            then!(s, "both the domain and practice skills match", {
+                assert_eq!(matched.len(), 2);
+                assert_eq!(matched[0].name, "rust");
+                assert_eq!(matched[1].name, "git");
+            });
+        });
 
         let no_scope = HashSet::new();
-        let skills = [s, practice];
-        let matched = match_skills_scoped("rust git", &skills, &no_scope);
-        assert_eq!(matched.len(), 2);
+        let skills = [s_skill, practice];
+        when!(s, "match_skills_scoped runs with an empty domain scope", {
+            let matched = match_skills_scoped("rust git", &skills, &no_scope);
+            then!(s, "the practice skill still matches despite the empty scope", {
+                assert_eq!(matched.len(), 2);
+            });
+        });
     }
 }

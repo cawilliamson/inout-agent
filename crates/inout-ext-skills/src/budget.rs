@@ -93,6 +93,7 @@ pub fn assemble_always_on_block(
 mod tests {
     use std::path::PathBuf;
 
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     fn skill(name: &str, priority: i32, tokens: usize, source: crate::skill::SkillSource) -> Skill {
@@ -110,45 +111,80 @@ mod tests {
     }
 
     #[test]
-    fn drops_to_fit_budget() {
+    fn low_priority_skill_dropped_first() {
+        let mut s = scenario!(
+            "skills",
+            "Skill budget ranking and truncation",
+            "Low-priority skill dropped first"
+        );
         let a = skill("a", 0, 100, crate::skill::SkillSource::Bundled);
         let b = skill("b", 0, 60, crate::skill::SkillSource::Bundled);
         let c = skill("c", 0, 30, crate::skill::SkillSource::Bundled);
 
-        let skills = rank_and_truncate_skills(vec![&a, &b, &c], 120, &HashSet::new());
-        assert_eq!(skills.len(), 2);
-        assert_eq!(skills[0].name, "c");
-        assert_eq!(skills[1].name, "b");
+        when!(s, "rank_and_truncate_skills runs with a 120-token budget", {
+            let skills = rank_and_truncate_skills(vec![&a, &b, &c], 120, &HashSet::new());
+            then!(s, "the lowest-priority skill is dropped and the remainder is ranked by token count", {
+                assert_eq!(skills.len(), 2);
+                assert_eq!(skills[0].name, "c");
+                assert_eq!(skills[1].name, "b");
+            });
+        });
     }
 
     #[test]
-    fn pinned_kept_beyond_budget() {
+    fn pinned_skill_is_always_kept() {
+        let mut s = scenario!(
+            "skills",
+            "Skill budget ranking and truncation",
+            "Pinned skill is always kept"
+        );
         let a = skill("a", 0, 100, crate::skill::SkillSource::Bundled);
         let b = skill("b", 0, 100, crate::skill::SkillSource::Bundled);
-
         let mut pinned = HashSet::new();
         pinned.insert(String::from("b"));
 
-        let skills = rank_and_truncate_skills(vec![&a, &b], 50, &pinned);
-        assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "b");
+        when!(s, "rank_and_truncate_skills runs with a 50-token budget and b pinned", {
+            let skills = rank_and_truncate_skills(vec![&a, &b], 50, &pinned);
+            then!(s, "the pinned skill is still included despite exceeding the budget", {
+                assert_eq!(skills.len(), 1);
+                assert_eq!(skills[0].name, "b");
+            });
+        });
     }
 
     #[test]
-    fn priority_and_source_ranking() {
+    fn higher_source_tier_wins_at_equal_priority() {
+        let mut s = scenario!(
+            "skills",
+            "Skill budget ranking and truncation",
+            "Higher source tier wins at equal priority"
+        );
         let bundled = skill("x", 5, 10, crate::skill::SkillSource::Bundled);
         let project = skill("x", 5, 10, crate::skill::SkillSource::Project);
 
-        let skills = rank_and_truncate_skills(vec![&bundled, &project], 100, &HashSet::new());
-        assert_eq!(skills[0].source, crate::skill::SkillSource::Project);
+        when!(s, "rank_and_truncate_skills runs over a bundled and a project skill", {
+            let skills = rank_and_truncate_skills(vec![&bundled, &project], 100, &HashSet::new());
+            then!(s, "the project-tier skill outranks the bundled-tier skill", {
+                assert_eq!(skills[0].source, crate::skill::SkillSource::Project);
+            });
+        });
     }
 
     #[test]
-    fn build_reports_dropped() {
+    fn budget_exceeded_reports_dropped_names() {
+        let mut s = scenario!(
+            "skills",
+            "Always-on budget returns dropped skill names",
+            "Budget exceeded reports dropped names"
+        );
         let a = skill("a", 0, 100, crate::skill::SkillSource::Bundled);
         let b = skill("b", 0, 60, crate::skill::SkillSource::Bundled);
 
-        let (_, _tokens, dropped) = build_always_on_prompt_budgeted(&[&a, &b], 80);
-        assert_eq!(dropped, vec![String::from("a")]);
+        when!(s, "build_always_on_prompt_budgeted runs with an 80-token budget", {
+            let (_, _tokens, dropped) = build_always_on_prompt_budgeted(&[&a, &b], 80);
+            then!(s, "the dropped list contains the over-budget skill name", {
+                assert_eq!(dropped, vec![String::from("a")]);
+            });
+        });
     }
 }

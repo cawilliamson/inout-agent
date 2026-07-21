@@ -780,6 +780,7 @@ dependencies = [
  "inout-core",
  "inout-ext-sessions",
  "inout-ext-skills",
+ "inout-testing",
  "ratatui",
  "reqwest",
  "serde",
@@ -796,6 +797,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "inout-testing",
  "rhai",
  "serde",
  "serde_json",
@@ -812,6 +814,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "inout-core",
+ "inout-testing",
  "serde",
  "serde_json",
  "tempfile",
@@ -825,12 +828,17 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "inout-core",
+ "inout-testing",
  "serde",
  "serde_json",
  "serde_yaml",
  "tempfile",
  "walkdir",
 ]
+
+[[package]]
+name = "inout-testing"
+version = "0.3.0"
 
 [[package]]
 name = "instability"

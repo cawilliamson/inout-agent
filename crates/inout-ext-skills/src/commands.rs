@@ -201,16 +201,22 @@ fn home_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[test]
     fn source_glyph_mapping() {
-        assert_eq!(source_glyph(SkillSource::Bundled), "b");
-        assert_eq!(source_glyph(SkillSource::Project), "p");
+        let mut s = scenario!("skills", "Skill source tiers", "Bundled source for compiled-in defaults");
+        when!(s, "source_glyph is called for each source tier", {});
+        then!(s, "each tier maps to its single-character glyph", {
+            assert_eq!(source_glyph(SkillSource::Bundled), "b");
+            assert_eq!(source_glyph(SkillSource::Project), "p");
+        });
     }
 
     #[test]
     fn skill_show_not_found() {
+        let mut s = scenario!("skills", "Skill commands", "`/skill show <name>` previews a skill");
         let state = CommandState::default();
         let ctx = CommandContext {
             model: String::new(),
@@ -218,7 +224,11 @@ mod tests {
             args: String::from("missing"),
             snapshot: serde_json::Value::Null,
         };
-        let result = skill_show(&ctx, &state).unwrap();
-        assert!(result.message.contains("not found"));
+        when!(s, "skill_show runs for a name not present in state", {
+            let result = skill_show(&ctx, &state).unwrap();
+            then!(s, "the result message reports the skill was not found", {
+                assert!(result.message.contains("not found"));
+            });
+        });
     }
 }

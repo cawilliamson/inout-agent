@@ -58,14 +58,20 @@ impl Extension for SkillsExtension {
 
 #[cfg(test)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[test]
     fn extension_name_and_registration() {
+        let mut s = scenario!("extensions", "Rust extension can register multiple surface items", "Single extension registers tool, command, and hook");
         let ext = SkillsExtension::new();
-        assert_eq!(ext.name(), "skills");
-        let mut api = ExtensionApi::noop();
-        ext.register(&mut api);
-        assert!(!api.commands.names().is_empty());
+        when!(s, "the skills extension is registered with an extension api", {
+            assert_eq!(ext.name(), "skills");
+            let mut api = ExtensionApi::noop();
+            ext.register(&mut api);
+            then!(s, "the extension name is skills and slash commands are registered", {
+                assert!(!api.commands.names().is_empty());
+            });
+        });
     }
 }

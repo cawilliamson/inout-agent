@@ -574,10 +574,12 @@ impl LlmClient for ReplayLlmClient {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use inout_testing::{scenario, then, when};
     use super::*;
 
     #[test]
     fn cost_compute_gpt4o_mini_rates() {
+        let mut s = scenario!("llm-client", "Usage metrics", "Aggregate usage across turns");
         let rates =
             ModelRates { input: 0.15e-6, output: 0.6e-6, cache_read: 0.075e-6, cache_write: 0.0 };
         let usage = OpenAiUsage {
@@ -588,54 +590,78 @@ mod tests {
                 cache_write_tokens: 0,
             }),
         };
-        let cost = CallCost::compute(&rates, &usage);
-        let expected = 174.0 * 0.15e-6 + 10.0 * 0.6e-6;
-        assert!((cost.total_cost - expected).abs() < 1e-9);
-        assert_eq!(cost.input_tokens, 174);
-        assert_eq!(cost.output_tokens, 10);
+        when!(s, "CallCost::compute is called with gpt-4o-mini rates and a usage value", {
+            let cost = CallCost::compute(&rates, &usage);
+            let expected = 174.0 * 0.15e-6 + 10.0 * 0.6e-6;
+            then!(s, "the total cost and token counts match the rate card", {
+                assert!((cost.total_cost - expected).abs() < 1e-9);
+                assert_eq!(cost.input_tokens, 174);
+                assert_eq!(cost.output_tokens, 10);
+            });
+        });
     }
 
     #[test]
     fn sse_parse_done_event() {
-        let evts = parse_sse_event("data: [DONE]");
-        assert_eq!(evts.len(), 1);
-        assert!(matches!(evts[0], SseEvent::Done));
+        let mut s = scenario!("llm-client", "SSE event parsing", "Done marker terminates the stream");
+        when!(s, "parse_sse_event is called with a data: [DONE] line", {
+            let evts = parse_sse_event("data: [DONE]");
+            then!(s, "a single done event is produced", {
+                assert_eq!(evts.len(), 1);
+                assert!(matches!(evts[0], SseEvent::Done));
+            });
+        });
     }
 
     #[test]
     fn sse_parse_content_delta() {
+        let mut s = scenario!("llm-client", "SSE event parsing", "Content delta is parsed");
         let raw = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"index\":0}]}";
-        let evts = parse_sse_event(raw);
-        assert_eq!(evts.len(), 1);
-        match &evts[0] {
-            SseEvent::DeltaContent(s) => assert_eq!(s, "hi"),
-            other => panic!("expected DeltaContent, got {other:?}"),
-        }
+        when!(s, "parse_sse_event is called with a content delta chunk", {
+            let evts = parse_sse_event(raw);
+            then!(s, "a single delta-content event carrying the text is produced", {
+                assert_eq!(evts.len(), 1);
+                match &evts[0] {
+                    SseEvent::DeltaContent(s) => assert_eq!(s, "hi"),
+                    other => panic!("expected DeltaContent, got {other:?}"),
+                }
+            });
+        });
     }
 
     #[test]
     fn sse_parse_reasoning_and_content_same_chunk() {
+        let mut s = scenario!("llm-client", "SSE event parsing", "Reasoning and content on the same chunk");
         // glm-5.2 emits reasoning + content on the same delta; both must surface.
         let raw = "data: {\"choices\":[{\"delta\":{\"reasoning\":\"thinking...\",\"content\":\"ok\"},\"index\":0}]}";
-        let evts = parse_sse_event(raw);
-        assert_eq!(evts.len(), 2, "reasoning + content on one chunk");
-        assert!(matches!(evts[0], SseEvent::DeltaReasoning(_)));
-        assert!(matches!(evts[1], SseEvent::DeltaContent(_)));
+        when!(s, "parse_sse_event is called with a chunk carrying both reasoning and content", {
+            let evts = parse_sse_event(raw);
+            then!(s, "both a reasoning event and a content event are produced in order", {
+                assert_eq!(evts.len(), 2, "reasoning + content on one chunk");
+                assert!(matches!(evts[0], SseEvent::DeltaReasoning(_)));
+                assert!(matches!(evts[1], SseEvent::DeltaContent(_)));
+            });
+        });
     }
 
     #[test]
     fn sse_parse_tool_call_delta() {
+        let mut s = scenario!("llm-client", "SSE event parsing", "Tool-call delta is parsed");
         let raw = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]},\"index\":0}]}";
-        let evts = parse_sse_event(raw);
-        assert_eq!(evts.len(), 1);
-        match &evts[0] {
-            SseEvent::DeltaTool { index, id, name, arguments } => {
-                assert_eq!(*index, 0);
-                assert_eq!(id.as_deref(), Some("call_1"));
-                assert_eq!(name.as_deref(), Some("read"));
-                assert!(arguments.as_ref().unwrap().contains("a.txt"));
-            }
-            other => panic!("expected DeltaTool, got {other:?}"),
-        }
+        when!(s, "parse_sse_event is called with a tool-call delta chunk", {
+            let evts = parse_sse_event(raw);
+            then!(s, "a single delta-tool event carries the index, id, name, and arguments", {
+                assert_eq!(evts.len(), 1);
+                match &evts[0] {
+                    SseEvent::DeltaTool { index, id, name, arguments } => {
+                        assert_eq!(*index, 0);
+                        assert_eq!(id.as_deref(), Some("call_1"));
+                        assert_eq!(name.as_deref(), Some("read"));
+                        assert!(arguments.as_ref().unwrap().contains("a.txt"));
+                    }
+                    other => panic!("expected DeltaTool, got {other:?}"),
+                }
+            });
+        });
     }
 }

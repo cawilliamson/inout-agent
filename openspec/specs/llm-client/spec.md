@@ -171,6 +171,29 @@ The system SHALL provide a `BeforeOutput` callback type. The provider SHALL invo
 - THEN the request targets the local server
 - AND the response is parsed as OpenAI-compatible
 
+### Requirement: SSE event parsing
+The system SHALL parse OpenAI-compatible Server-Sent Events into a stream of delta events: content deltas, reasoning deltas, tool-call deltas, and a terminal `Done` marker. A single delta chunk carrying both `reasoning` and `content` SHALL produce both events in order.
+
+#### Scenario: Done marker terminates the stream
+- GIVEN a `data: [DONE]` SSE line
+- WHEN `parse_sse_event` is called
+- THEN a single `Done` event is produced
+
+#### Scenario: Content delta is parsed
+- GIVEN a delta chunk whose `delta.content` is `hi`
+- WHEN `parse_sse_event` is called
+- THEN a single delta-content event carries the text `hi`
+
+#### Scenario: Reasoning and content on the same chunk
+- GIVEN a delta chunk whose `delta` carries both `reasoning` and `content`
+- WHEN `parse_sse_event` is called
+- THEN a reasoning event and a content event are produced in order
+
+#### Scenario: Tool-call delta is parsed
+- GIVEN a delta chunk whose `delta.tool_calls` carries index, id, function name, and arguments
+- WHEN `parse_sse_event` is called
+- THEN a single delta-tool event carries the index, id, name, and arguments
+
 ### Requirement: send_with_retry
 
 The system SHALL provide a `send_with_retry` helper that retries HTTP stream drops with exponential backoff, up to a maximum of four retries, with delays of 3 seconds, 6 seconds, 12 seconds, and 24 seconds.
