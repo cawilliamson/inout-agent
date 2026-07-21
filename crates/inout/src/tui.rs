@@ -167,6 +167,80 @@ impl TuiAgent {
         }
     }
 
+    /// render the full view inline as chat messages instead of an overlay.
+    /// dumps every turn's blocks into self.messages so the normal chat scroll
+    /// shows the complete llm traffic.
+    async fn inline_full_view(&mut self) {
+        self.context_viewer = None;
+        let spec = {
+            let agent = self.agent.lock().await;
+            agent.build_view("full")
+        };
+        let Some(spec) = spec else {
+            self.messages.push(TuiMessage {
+                role: Role::Assistant,
+                content: "no 'full' view registered (load extensions first)".to_string(),
+            });
+            self.follow_bottom = true;
+            return;
+        };
+
+        if spec.turns.is_empty() {
+            self.messages.push(TuiMessage {
+                role: Role::Assistant,
+                content: "no conversation history to display".to_string(),
+            });
+            self.follow_bottom = true;
+            return;
+        }
+
+        self.messages.push(TuiMessage {
+            role: Role::System,
+            content: format!(
+                "full view — {} turns, {}t / {}t ({}%)",
+                spec.turns.len(),
+                spec.total_tokens,
+                spec.limit_tokens,
+                spec.context_pct
+            ),
+        });
+
+        for turn in &spec.turns {
+            self.messages.push(TuiMessage {
+                role: Role::System,
+                content: format!(
+                    "── {} [{}] {}t{} ──",
+                    if turn.preview == "[system prompt]" { "system" } else { "turn" },
+                    turn.preview,
+                    turn.tokens_est,
+                    if turn.in_window { "" } else { " (out of window)" }
+                ),
+            });
+            for block in &turn.blocks {
+                let (role, content) = match block {
+                    ViewBlock::UserText { text, .. } => (Role::User, text.clone()),
+                    ViewBlock::AssistantText { text, .. } => {
+                        if let Some(reasoning) = text.strip_prefix("[reasoning] ") {
+                            (Role::Assistant, format!("thinking: {reasoning}"))
+                        } else {
+                            (Role::Assistant, text.clone())
+                        }
+                    }
+                    ViewBlock::ToolCall { name, input_json, .. } => {
+                        (Role::Tool, format!("→ {name}({input_json})"))
+                    }
+                    ViewBlock::ToolResult { tool_name, content, .. } => {
+                        (Role::Tool, format!("← {tool_name}: {content}"))
+                    }
+                };
+                self.messages.push(TuiMessage { role, content });
+            }
+        }
+
+        self.follow_bottom = true;
+        self.chat_scroll = 0;
+    }
+
     async fn rebuild_context_viewer(&mut self) {
         let name = self.context_viewer.as_ref().map(|v| v.view_name.clone()).unwrap_or_default();
         let spec = {
@@ -680,7 +754,11 @@ impl TuiAgent {
                                 match result.action {
                                     None => {}
                                     Some(CommandAction::OpenView(name)) => {
-                                        self.open_view(&name).await;
+                                        if name == "full" {
+                                            self.inline_full_view().await;
+                                        } else {
+                                            self.open_view(&name).await;
+                                        }
                                     }
                                     Some(CommandAction::ClearHistory) => {
                                         let mut agent = self.agent.lock().await;

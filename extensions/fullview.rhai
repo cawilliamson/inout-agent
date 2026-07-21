@@ -162,10 +162,10 @@ fn register(api) {
         }
     });
 
-    // /full command — opens the full view overlay
-    api.register_command("full", "show full llm traffic view", |ctx| {
+    // /full command — dumps all llm traffic inline in the chat area
+    api.register_command("full", "show full llm traffic inline", |ctx| {
         #{
-            message: "opening full view…",
+            message: "rendering full view inline…",
             action: "open_view:full",
         }
     });

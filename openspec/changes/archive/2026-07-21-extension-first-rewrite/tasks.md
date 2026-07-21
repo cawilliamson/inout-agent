@@ -1,0 +1,43 @@
+# Tasks: Extension-first architecture rewrite
+
+- [x] 1.1 Create workspace with inout-core and inout crates
+- [x] 1.2 Implement core types (Message, Role, ContentBlock, ToolCall, Config)
+- [x] 1.3 Implement hook bus (typed pub/sub with observe/on/emit)
+- [x] 1.4 Implement tool registry (dynamic registration, schemas, dispatch)
+- [x] 1.5 Implement extension trait + ExtensionApi
+- [x] 1.6 Implement rhai scripting runtime (ScriptExtension, host functions, permissions)
+- [x] 1.7 Implement view builder system (ViewSpec, ViewBlock, ViewTurn)
+- [x] 1.8 Implement command registry with rhai dispatch
+- [x] 2.1 Create inout-ext-sessions crate
+- [x] 2.2 Implement session entry tree (Message, Leaf, Compaction, etc.)
+- [x] 2.3 Implement jsonl session repo (append-only, atomic writes)
+- [x] 2.4 Implement build_context (walk tree leaf-to-root)
+- [x] 2.5 Implement compaction (summary entry, before/after events)
+- [x] 2.6 Implement continuity handoff (context.md, session_log.md)
+- [x] 2.7 Implement branching (fork, navigate tree)
+- [x] 3.1 Create inout-ext-skills crate
+- [x] 3.2 Implement skill struct with frontmatter parsing
+- [x] 3.3 Implement skill loader (bundled, global, external, project tiers)
+- [x] 3.4 Implement trigger engine (length-aware word boundaries)
+- [x] 3.5 Implement skill budget (rank and truncate, pinned always kept)
+- [x] 3.6 Implement stack detection (manifest files)
+- [x] 3.7 Implement skill trace (per-turn record)
+- [x] 3.8 Implement /skill commands (list, show, create, log, scope)
+- [x] 4.1 Create rhai extensions: bash, read, write, edit, grep, glob
+- [x] 4.2 Create context.rhai view builder
+- [x] 4.3 Create fullview.rhai view builder
+- [x] 4.4 Create commands.rhai (help, clear, new, model, undo, exit, reload, context)
+- [x] 5.1 Redesign TUI with cached values (fix blocking_lock crash)
+- [x] 5.2 Add slash command autocomplete suggestions
+- [x] 5.3 Add context viewer overlay (turn list + detail)
+- [x] 5.4 Add full view inline rendering (all LLM traffic)
+- [x] 5.5 Add context meter bar (token usage percentage)
+- [x] 5.6 Add reasoning toggle (r key)
+- [x] 6.1 Add clippy.toml with strict lint config
+- [x] 6.2 Add rustfmt.toml
+- [x] 6.3 Add deny.toml (advisories, licenses, bans, sources)
+- [x] 6.4 Add .cargo/config.toml (rustflags, aliases)
+- [x] 7.1 Add integration tests (agent dispatches tools, jail escape rejection)
+- [x] 7.2 Add scripting tests (context view, full view, command dispatch)
+- [x] 7.3 Add history tests (system prompt, jsonl roundtrip)
+- [x] 7.4 Add state machine tests
